@@ -56,11 +56,8 @@
     }
 
     .drop-zone input { display: none; }
-
     .drop-zone .icon { font-size: 2.5rem; margin-bottom: 10px; }
-
     .drop-zone p { color: #aaa; font-size: 0.9rem; }
-
     .drop-zone span { color: #a78bfa; font-weight: 600; cursor: pointer; }
 
     label.setting {
@@ -232,29 +229,24 @@
 
 <script type="module">
   import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-  import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
+  import { fetchFile } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
   const ffmpeg = new FFmpeg();
   let selectedFile = null;
 
-  // --- UI refs ---
-  const dropZone    = document.getElementById('dropZone');
-  const fileInput   = document.getElementById('fileInput');
-  const fileInfo    = document.getElementById('fileInfo');
-  const crfSlider   = document.getElementById('crfSlider');
-  const crfVal      = document.getElementById('crfVal');
-  const compressBtn = document.getElementById('compressBtn');
-  const progressWrap= document.getElementById('progressWrap');
-  const progressBar = document.getElementById('progressBar');
-  const progressLabel=document.getElementById('progressLabel');
-  const resultDiv   = document.getElementById('result');
+  const dropZone      = document.getElementById('dropZone');
+  const fileInput     = document.getElementById('fileInput');
+  const fileInfo      = document.getElementById('fileInfo');
+  const crfSlider     = document.getElementById('crfSlider');
+  const crfVal        = document.getElementById('crfVal');
+  const compressBtn   = document.getElementById('compressBtn');
+  const progressWrap  = document.getElementById('progressWrap');
+  const progressBar   = document.getElementById('progressBar');
+  const progressLabel = document.getElementById('progressLabel');
+  const resultDiv     = document.getElementById('result');
 
-  // CRF label
-  crfSlider.addEventListener('input', () => {
-    crfVal.textContent = crfSlider.value;
-  });
+  crfSlider.addEventListener('input', () => { crfVal.textContent = crfSlider.value; });
 
-  // Drag & drop
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
   dropZone.addEventListener('drop', e => {
@@ -274,58 +266,47 @@
     resultDiv.style.display = 'none';
   }
 
-  // Load FFmpeg
   async function loadFFmpeg() {
-    const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm';
+    progressLabel.textContent = 'Descargando FFmpeg (primera vez ~10s)...';
     await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.12.6/dist/esm/ffmpeg-core.js',
+      wasmURL: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core-st@0.12.6/dist/esm/ffmpeg-core.wasm',
     });
   }
 
-  // Progress
   ffmpeg.on('progress', ({ progress }) => {
-    const pct = Math.round(progress * 100);
+    const pct = Math.min(Math.round(progress * 100), 100);
     progressBar.style.width = pct + '%';
     progressLabel.textContent = `Comprimiendo... ${pct}%`;
   });
 
-  // Compress
   compressBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
 
     compressBtn.disabled = true;
     progressWrap.style.display = 'block';
     progressBar.style.width = '0%';
-    progressLabel.textContent = 'Cargando FFmpeg (primera vez puede tardar ~5s)...';
+    progressLabel.textContent = 'Iniciando...';
     resultDiv.style.display = 'none';
 
     try {
       if (!ffmpeg.loaded) await loadFFmpeg();
 
       progressLabel.textContent = 'Leyendo archivo...';
-      const ext = selectedFile.name.split('.').pop();
+      const ext        = selectedFile.name.split('.').pop();
       const inputName  = `input.${ext}`;
       const outputName = 'output.mp4';
 
       await ffmpeg.writeFile(inputName, await fetchFile(selectedFile));
 
-      // Build args
-      const crf = crfSlider.value;
-      const res = document.getElementById('resolution').value;
+      const crf       = crfSlider.value;
+      const res       = document.getElementById('resolution').value;
       const audioMode = document.getElementById('audio').value;
 
-      const args = ['-i', inputName];
+      const args = ['-i', inputName, '-c:v', 'libx264', '-crf', crf, '-preset', 'fast'];
 
-      // Video codec
-      args.push('-c:v', 'libx264', '-crf', crf, '-preset', 'fast');
+      if (res !== 'original') args.push('-vf', `scale=${res}`);
 
-      // Resolution
-      if (res !== 'original') {
-        args.push('-vf', `scale=${res}`);
-      }
-
-      // Audio
       if (audioMode === 'none') {
         args.push('-an');
       } else {
@@ -337,10 +318,9 @@
       progressLabel.textContent = 'Comprimiendo...';
       await ffmpeg.exec(args);
 
-      const data = await ffmpeg.readFile(outputName);
-      const blob = new Blob([data.buffer], { type: 'video/mp4' });
-      const url  = URL.createObjectURL(blob);
-
+      const data   = await ffmpeg.readFile(outputName);
+      const blob   = new Blob([data.buffer], { type: 'video/mp4' });
+      const url    = URL.createObjectURL(blob);
       const origMB = (selectedFile.size / 1024 / 1024).toFixed(2);
       const newMB  = (blob.size / 1024 / 1024).toFixed(2);
       const saving = (((selectedFile.size - blob.size) / selectedFile.size) * 100).toFixed(1);
@@ -349,11 +329,7 @@
       progressLabel.textContent = '✅ ¡Listo!';
 
       resultDiv.innerHTML = `
-        <p>
-          Original: <strong>${origMB} MB</strong> →
-          Comprimido: <strong>${newMB} MB</strong>
-          &nbsp;|&nbsp; Ahorro: <strong>${saving}%</strong>
-        </p>
+        <p>Original: <strong>${origMB} MB</strong> → Comprimido: <strong>${newMB} MB</strong> &nbsp;|&nbsp; Ahorro: <strong>${saving}%</strong></p>
         <a href="${url}" download="video_comprimido.mp4">⬇️ Descargar Video</a>
       `;
       resultDiv.style.display = 'block';
